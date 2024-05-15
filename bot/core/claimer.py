@@ -18,6 +18,7 @@ auth_api_url = 'https://gateway.blum.codes/v1/auth/provider/PROVIDER_TELEGRAM_MI
 class Claimer:
     def __init__(self, client: Client, proxy_str: str | None, agent):
         self.client = client
+        self.proxy_str = proxy_str
         self.session_name = client.name
 
         proxy_conn = ProxyConnector().from_url(proxy_str) if proxy_str else None
@@ -28,7 +29,6 @@ class Claimer:
         self.http_client = aiohttp.ClientSession(headers=clientHeaders, connector=proxy_conn)
 
         if proxy_str:
-            self.check_proxy(proxy=proxy_str)
             proxy = Proxy.from_str(proxy_str)
             self.client.proxy = dict(
                 scheme=proxy.protocol,
@@ -44,13 +44,13 @@ class Claimer:
     async def __aexit__(self, exc_type, exc, tb):
         await self.http_client.close()
 
-    async def check_proxy(self, proxy: str) -> None:
+    async def check_proxy(self) -> None:
         try:
             response = await self.http_client.get(url='https://httpbin.org/ip', timeout=aiohttp.ClientTimeout(5))
             ip = (await response.json()).get('origin')
             logger.info(f"{self.session_name} | Proxy IP: {ip}")
         except Exception as error:
-            logger.error(f"{self.session_name} | Proxy: {proxy} | Error: {error}")
+            logger.error(f"{self.session_name} | Proxy: {self.proxy_str} | Error: {error}")
 
     async def get_tg_web_data(self):
         try:
@@ -119,6 +119,8 @@ class Claimer:
             logger.error(f"{self.session_name} | Error while login: {error}")
 
     async def run(self) -> None:
+        if self.proxy_str:
+            await self.check_proxy()
         tg_web_data = await self.get_tg_web_data()
         await self.login(tg_web_data)
 
