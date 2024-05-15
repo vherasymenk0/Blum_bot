@@ -15,9 +15,7 @@
 
 1. Copy .env-example to .env
 2. Specify your **API_ID** and **API_HASH**
-3. Fill **bot_info** in **bot/core/bot_info.py** before startup
-
-4. Execute in the terminal
+3. Execute in the terminal
 ```shell
 ~bot/ >>> python -m venv venv
 ~bot/ >>> source venv/bin/activate

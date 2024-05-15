@@ -51,6 +51,7 @@ class Claimer:
             logger.info(f"{self.session_name} | Proxy IP: {ip}")
         except Exception as error:
             logger.error(f"{self.session_name} | Proxy: {self.proxy_str} | Error: {error}")
+            return
 
     async def get_tg_web_data(self):
         try:
@@ -100,12 +101,13 @@ class Claimer:
             resp_json = await resp.json()
 
             timestamp = resp_json.get("timestamp")
+            balance = resp_json.get("availableBalance")
             if resp_json.get("farming"):
                 start_time = resp_json.get("farming").get("startTime")
                 end_time = resp_json.get("farming").get("endTime")
 
-                return int(timestamp / 1000), int(start_time / 1000), int(end_time / 1000)
-            return int(timestamp / 1000), None, None
+                return int(timestamp / 1000), int(start_time / 1000), int(end_time / 1000), balance
+            return int(timestamp / 1000), None, None, balance
         except Exception as error:
             logger.error(f"{self.session_name} | Error while getting balance: {error}")
 
@@ -121,12 +123,14 @@ class Claimer:
     async def run(self) -> None:
         if self.proxy_str:
             await self.check_proxy()
+
         tg_web_data = await self.get_tg_web_data()
         await self.login(tg_web_data)
 
         while True:
             try:
-                timestamp, start_time, end_time = await self.balance()
+                timestamp, start_time, end_time, balance = await self.balance()
+                logger.info(f"{self.session_name} | Current balance {balance}")
 
                 if start_time is None and end_time is None:
                     await self.start()
