@@ -1,4 +1,5 @@
 import asyncio
+from typing import Union, Optional
 import aiohttp
 from aiohttp_proxy import ProxyConnector
 from pyrogram import Client
@@ -96,7 +97,7 @@ class Claimer:
         if 'message' in data:
             raise Exception(data['message'])
 
-    async def balance(self):
+    async def balance(self) -> tuple[int, Union[int, None], Union[int, None], int]:
         resp = await self.http_client.get(f"{api_url}/user/balance")
         data = await resp.json()
 
@@ -108,8 +109,9 @@ class Claimer:
             if data.get("farming"):
                 start_time = data.get("farming").get("startTime")
                 end_time = data.get("farming").get("endTime")
-
                 return int(timestamp / 1000), int(start_time / 1000), int(end_time / 1000), balance
+            else:
+                return timestamp, None, None, balance
 
     async def login(self, tg_web_data: str):
         resp = await self.http_client.post(auth_api_url, json={"query": tg_web_data})
@@ -130,19 +132,15 @@ class Claimer:
 
         while True:
             try:
-                balance_data = await self.balance()
-                if balance_data is not None:
-                    timestamp, start_time, end_time, balance = balance_data
-                    logger.info(f"{self.session_name} | Current balance {balance}")
-                else:
-                    raise Exception('balance_data is None')
+                timestamp, start_time, end_time, balance = await self.balance()
 
                 if start_time is None and end_time is None:
                     await self.start()
                     logger.success(f"{self.session_name} | Start farming!")
                     await asyncio.sleep(1)
                     continue
-                elif start_time is not None and end_time is not None and timestamp >= end_time:
+
+                if timestamp >= end_time:
                     timestamp, balance = await self.claim()
                     logger.success(f"{self.session_name} | Claimed reward! Balance: {balance}")
                     await asyncio.sleep(1)
