@@ -81,44 +81,45 @@ class Claimer:
             await asyncio.sleep(delay=3)
 
     async def claim(self):
-        try:
-            resp = await self.http_client.post(f"{api_url}/farming/claim")
-            resp_json = await resp.json()
+        resp = await self.http_client.post(f"{api_url}/farming/claim")
+        data = await resp.json()
 
-            return int(resp_json.get("timestamp") / 1000), resp_json.get("availableBalance")
-        except Exception as error:
-            logger.error(f"{self.session_name} | Error while claiming rewards: {error}")
+        if 'message' in data:
+            raise Exception(data['message'])
+        else:
+            return int(data.get("timestamp") / 1000), data.get("availableBalance")
 
     async def start(self):
-        try:
-            await self.http_client.post(f"{api_url}/farming/start")
-        except Exception as error:
-            logger.error(f"{self.session_name} | Error while start farming: {error}")
+        resp = await self.http_client.post(f"{api_url}/farming/start")
+        data = await resp.json()
+
+        if 'message' in data:
+            raise Exception(data['message'])
 
     async def balance(self):
-        try:
-            resp = await self.http_client.get(f"{api_url}/user/balance")
-            resp_json = await resp.json()
+        resp = await self.http_client.get(f"{api_url}/user/balance")
+        data = await resp.json()
 
-            timestamp = resp_json.get("timestamp")
-            balance = resp_json.get("availableBalance")
-            if resp_json.get("farming"):
-                start_time = resp_json.get("farming").get("startTime")
-                end_time = resp_json.get("farming").get("endTime")
+        if 'message' in data:
+            raise Exception(data['message'])
+        else:
+            timestamp = data.get("timestamp")
+            balance = data.get("availableBalance")
+            if data.get("farming"):
+                start_time = data.get("farming").get("startTime")
+                end_time = data.get("farming").get("endTime")
 
                 return int(timestamp / 1000), int(start_time / 1000), int(end_time / 1000), balance
-            return int(timestamp / 1000), None, None, balance
-        except Exception as error:
-            logger.error(f"{self.session_name} | Error while getting balance: {error}")
 
     async def login(self, tg_web_data: str):
-        try:
-            resp = await self.http_client.post(auth_api_url, json={"query": tg_web_data})
-            data = await resp.json()
+        resp = await self.http_client.post(auth_api_url, json={"query": tg_web_data})
+        data = await resp.json()
+
+        if 'message' in data:
+            raise Exception(data['message'])
+        else:
             token = data.get("token").get("access")
             self.http_client.headers['Authorization'] = f"Bearer {token}"
-        except Exception as error:
-            logger.error(f"{self.session_name} | Error while login: {error}")
 
     async def run(self) -> None:
         if self.proxy_str:
@@ -129,17 +130,23 @@ class Claimer:
 
         while True:
             try:
-                timestamp, start_time, end_time, balance = await self.balance()
-                logger.info(f"{self.session_name} | Current balance {balance}")
+                balance_data = await self.balance()
+                if balance_data is not None:
+                    timestamp, start_time, end_time, balance = balance_data
+                    logger.info(f"{self.session_name} | Current balance {balance}")
+                else:
+                    raise Exception('balance_data is None')
 
                 if start_time is None and end_time is None:
                     await self.start()
                     logger.success(f"{self.session_name} | Start farming!")
-
+                    await asyncio.sleep(1)
+                    continue
                 elif start_time is not None and end_time is not None and timestamp >= end_time:
                     timestamp, balance = await self.claim()
                     logger.success(f"{self.session_name} | Claimed reward! Balance: {balance}")
-
+                    await asyncio.sleep(1)
+                    continue
                 else:
                     sleep_time = divmod(end_time - timestamp, 3600)
                     sleep_time_min, sleep_time_sec = divmod(sleep_time[1], 60)
@@ -148,11 +155,17 @@ class Claimer:
                     await asyncio.sleep(end_time - timestamp)
                     continue
 
-                await asyncio.sleep(1)
-
             except Exception as error:
-                logger.error(f"{self.session_name} | Unknown error: {error}")
-                await asyncio.sleep(delay=3)
+                if str(error) == 'Invalid jwt token':
+                    logger.error(f"{self.session_name} | {error}")
+                    logger.info(f"{self.session_name} | Relogin...")
+                    self.http_client.headers['Authorization'] = ''
+                    await self.login(tg_web_data)
+                    await asyncio.sleep(delay=2)
+                    continue
+                else:
+                    logger.error(f"{self.session_name} | Unknown error: {error}")
+                    await asyncio.sleep(delay=3)
 
 
 async def run_claimer(tg_client: Client, proxy: str | None, agent):
